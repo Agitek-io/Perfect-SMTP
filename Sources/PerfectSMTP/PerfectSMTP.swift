@@ -48,9 +48,9 @@ public struct SMTPClient {
 	/// smtp://smtp.mail.server or smtps://smtp.mail.server
 	public var url = ""
 	/// login name: user@mail.server
-	public var username = ""
+    public var username: String?
 	/// login secret
-	public var password = ""
+    public var password: String?
 	/// upgrade connection to use TLS
 	public var requiresTLSUpgrade = false
 	/// constructor
@@ -58,7 +58,7 @@ public struct SMTPClient {
 	///   - url: String, smtp://somewhere or smtps://someelsewhere
 	///   - username: String, user@somewhere
 	///   - password: String
-	public init(url: String = "", username: String = "", password: String = "", requiresTLSUpgrade: Bool = false) {
+	public init(url: String = "", username: String? = nil, password: String? = nil, requiresTLSUpgrade: Bool = false) {
 		self.url = url
 		self.username = username
 		self.password = password
@@ -364,11 +364,21 @@ public class EMail {
 		guard recipients.count > 0 else {
 			throw SMTPError.INVALID_RECIPIENT
 		}
-		var options: [CURLRequest.Option] = (debug ? [.verbose] : []) + [
-			.mailFrom(from.address),
-			.userPwd("\(client.username):\(client.password)"),
-			.upload(EmailBodyGen(body)),
-			.connectTimeout(connectTimeoutSeconds)]
+        
+        var options: [CURLRequest.Option]
+        if let username = client.username, let password = client.password {
+            options = (debug ? [.verbose] : []) + [
+                .mailFrom(from.address),
+                .userPwd("\(username):\(password)"),
+                .upload(EmailBodyGen(body)),
+                .connectTimeout(connectTimeoutSeconds)]
+        } else {
+            options = (debug ? [.verbose] : []) + [
+                .mailFrom(from.address),
+                .upload(EmailBodyGen(body)),
+                .connectTimeout(connectTimeoutSeconds)]
+        }
+		
 		options.append(contentsOf: recipients.map { .mailRcpt($0.address) })
 		if client.url.lowercased().hasPrefix("smtps") || client.requiresTLSUpgrade {
 			options.append(.useSSL)
