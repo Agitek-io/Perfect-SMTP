@@ -82,6 +82,27 @@ public struct Recipient {
 	}
 }
 
+/// Emaail Attachment  struucture
+public struct Attachment {
+    /// Path to file
+    public let path: String
+    /// File name
+    public let name: String?
+    /// Content Id
+    public let contentId: String?
+    
+    /// constructor
+    /// - parameters:
+    ///   - path: Full path  to file
+    ///   - name: Optional name for the file, oitherwiise will take from the path
+    ///   - name: Optional contentId
+    public init(path: String, name: String? = nil, contentId: String? = nil) {
+        self.path = path
+        self.name = name
+        self.contentId = contentId
+    }
+}
+
 /// string extension for express conversion from recipient, etc.
 extension String {
 	func base64Encoded() -> String? {
@@ -135,7 +156,7 @@ extension String {
 	/// get the address info from a recipient, i.e, someone@somewhere -> @somewhere
 	var emailSuffix: String {
 		get {
-			guard let at = index(of: "@") else {
+            guard let at = firstIndex(of: "@") else {
 				return self
 			}
 			#if swift(>=4.0)
@@ -200,8 +221,8 @@ public class EMail {
 	public var from: Recipient = Recipient()
 	/// title of the email
 	public var subject: String = ""
-	/// attachements of the mail - file name with full path
-	public var attachments: [String] = []
+	/// attachements of the mail
+	public var attachments: [Attachment] = []
 	/// email content body
 	public var content: String = ""
 	// text version, to be added with a html version.
@@ -232,25 +253,32 @@ public class EMail {
 	/// - returns
 	/// MIME encoded content with boundary
 	@discardableResult
-	private func attach(path: String, mimeType: String) -> String {
+    private func attach(attachment: Attachment) -> String {
+        let mimeType = MIMEType.forExtension(attachment.path.suffix)
 		// extract file name from full path
-		let file = path.fileNameWithoutPath
+        let file = attachment.name ?? attachment.path.fileNameWithoutPath
 		guard !file.isEmpty else {
 			return ""
 		}
 		do {
 			// get base64 encoded text
-			guard let data = try encode(path: path) else {
+			guard let data = try encode(path: attachment.path) else {
 				return ""
 			}
-			let disposition = "attachment"
+            let disposition = attachment.contentId == nil ? "attachment" : "inline"
 			if self.debug {
 				print("\(data.utf8.count) bytes attached")
 			}
 			// pack it up to an MIME part
-			return "--\(boundary)\r\nContent-Type: \(mimeType); name=\"\(file)\"\r\n"
-				+ "Content-Transfer-Encoding: base64\r\n"
-				+ "Content-Disposition: \(disposition); filename=\"\(file)\"\r\n\r\n\(data)\r\n"
+            var mime = ["--\(boundary)\r\nContent-Type: \(mimeType); name=\"\(file)\"\r\n"]
+            mime.append("Content-Transfer-Encoding: base64\r\n")
+            mime.append("Content-Disposition: \(disposition); filename=\"\(file)\"\r\n")
+            if let contentId = attachment.contentId {
+                mime.append("Content-ID: \(contentId)\r\n")
+            }
+            mime.append("\r\n\(data)\r\n")
+            
+            return mime.joined()
 		} catch {
 			return ""
 		}
@@ -353,7 +381,7 @@ public class EMail {
 			}
 		}
 		// add the attachements
-		body += attachments.map { attach(path: $0, mimeType: MIMEType.forExtension($0.suffix)) }.joined(separator: "")
+		body += attachments.map { attach(attachment: $0) }.joined(separator: "")
 		// end of the attachements
 		body += "--\(boundary)--\r\n"
 		return (body, uuid)
